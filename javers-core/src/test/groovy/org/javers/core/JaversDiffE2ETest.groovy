@@ -17,6 +17,7 @@ import org.javers.core.metamodel.annotation.DiffInclude
 import org.javers.core.metamodel.annotation.Id
 import org.javers.core.metamodel.annotation.ShallowReference
 import org.javers.core.metamodel.annotation.TypeName
+import org.javers.core.metamodel.clazz.EntityDefinition
 import org.javers.core.metamodel.clazz.EntityDefinitionBuilder
 import org.javers.core.metamodel.property.Property
 import org.javers.core.metamodel.type.IgnoredType
@@ -889,4 +890,57 @@ class JaversDiffE2ETest extends AbstractDiffTest {
         then:
         changes.size() == 0
     }
+
+    class Fee {
+        String feeCode;
+        String amount;
+    }
+
+    class Parent {
+        List<Fee> feeList;
+        Map<String, List<Fee>> userFeeList;
+    }
+
+    def "Entity registration breaks collection comparison"() {
+        given:
+        def javers = javers().registerEntity(new EntityDefinition(Fee.class, "feeCode"))
+                .withListCompareAlgorithm(ListCompareAlgorithm.AS_SET).build()
+        def feeList1 = new ArrayList();
+        feeList1.addAll([new Fee(feeCode: "comm", amount: "100"), new Fee(feeCode: "vat", amount: "200")]);
+        def feeList2 = new ArrayList();
+        feeList1.addAll([new Fee(feeCode: "comm", amount: "100"), new Fee(feeCode: "vat", amount: "200")]);
+
+        def mapFeeList1 = new ArrayList();
+        mapFeeList1.addAll([new Fee(feeCode: "comm", amount: "200"), new Fee(feeCode: "vat", amount: "200")]);
+        def mapFeeList2 = new ArrayList();
+        mapFeeList2.addAll([new Fee(feeCode: "comm", amount: "200"), new Fee(feeCode: "vat", amount: "200")]);
+
+        def map1 = new HashMap<String, List<Fee>>();
+        map1.put("a", mapFeeList1)
+
+        def map2 = new HashMap<String, List<Fee>>();
+        map2.put("a", mapFeeList2)
+
+
+        def parent1 = new Parent(feeList: feeList1, userFeeList: map1)
+        def parent2 = new Parent(feeList: feeList2, userFeeList: map2)
+
+        def diff = javers.compare(parent1, parent2)
+
+        println diff.prettyPrint()
+        /*
+        Diff:
+        * changes on org.javers.core.JaversDiffE2ETest$Fee/comm :
+          - 'amount' changed: '100' -> '200'
+          - 'amount' changed: '100' -> '200'
+        * changes on org.javers.core.JaversDiffE2ETest$Parent/ :
+          - 'feeList' collection changes :
+             . '...JaversDiffE2ETest$Fee/vat' removed
+             . '...JaversDiffE2ETest$Fee/comm' removed
+        */
+
+        then:
+        diff.hasChanges() == false
+    }
+
 }
