@@ -894,6 +894,18 @@ class JaversDiffE2ETest extends AbstractDiffTest {
     class Fee {
         String feeCode;
         String amount;
+
+        boolean equals(o) {
+            if (this.is(o)) return true
+            if (!(o instanceof Fee)) return false
+
+            Fee fee = (Fee) o
+
+            if (amount != fee.amount) return false
+            if (feeCode != fee.feeCode) return false
+
+            return true
+        }
     }
 
     class Parent {
