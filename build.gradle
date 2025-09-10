@@ -14,33 +14,34 @@ buildscript {
 }
 
 plugins {
-    id 'pl.allegro.tech.build.axion-release' version '1.10.1'
-    id 'io.github.gradle-nexus.publish-plugin' version '1.1.0'
+    id 'pl.allegro.tech.build.axion-release' version '1.18.7'
     id 'com.adarshr.test-logger' version '3.2.0'
+    id 'maven-publish'
+    id 'org.jreleaser' version '1.19.0'
+    id 'base'
 }
 
-scmVersion {
-    tag {
-        prefix = 'javers'
-    }
-}
+version = scmVersion.version
 
 subprojects {
+    apply plugin: 'base'
     apply plugin: 'maven-publish'
-    apply plugin: 'signing'
     apply plugin: 'java-library'
     apply plugin: 'groovy'
     apply plugin: 'org.owasp.dependencycheck'
     apply plugin: 'com.adarshr.test-logger'
 
     project.group = 'org.javers'
-    project.version = scmVersion.version
+    project.version = project.hasProperty("jitpack") ? rootProject.version : scmVersion.version
 
     repositories {
         mavenCentral()
     }
 
     java {
+        withJavadocJar()
+        withSourcesJar()
+
         registerFeature('optional') {
             usingSourceSet(sourceSets.main)
         }
@@ -60,6 +61,10 @@ subprojects {
         options.noTimestamp()
     }
 
+    tasks.withType(Javadoc).configureEach {
+        options.addStringOption('Xdoclint:none', '-quiet')
+    }
+
     tasks.withType(JavaCompile).configureEach {
         options.compilerArgs << '-parameters'
     }
@@ -74,16 +79,7 @@ subprojects {
         }
     }
 
-    //disable javadoc doclint for Java8
-    if (JavaVersion.current().isJava8Compatible()) {
-        allprojects {
-            tasks.withType(Javadoc) {
-                options.addStringOption('Xdoclint:none', '-quiet')
-            }
-        }
-    }
-
-    //-- begin maven-publish.publish  spell --
+    /*
     task sourcesJar(type: Jar) {
         from sourceSets.main.allJava
         archiveClassifier = 'sources'
@@ -91,7 +87,52 @@ subprojects {
     task javadocJar(type: Jar) {
         from javadoc
         archiveClassifier = 'javadoc'
+    }*/
+
+
+    publishing {
+        publications {
+            maven(MavenPublication) {
+                groupId = project.group
+                artifactId = project.name
+
+                from components.java
+
+                pom {
+                    name = 'JaVers Library'
+                    description = 'JaVers - object auditing and diff framework for Java'
+                    url = 'https://javers.org'
+
+                    licenses {
+                        license {
+                            name = 'The Apache Software License, Version 2.0'
+                            url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        }
+                    }
+                    developers {
+                        developer {
+                            id = 'bartoszwalacik'
+                            name = 'Bartosz Walacik'
+                        }
+                    }
+                    scm {
+                        connection = 'scm:git:https://github.com/javers/javers.git'
+                        developerConnection = 'scm:git:https://github.com/javers/javers.git'
+                        url = 'https://github.com/javers/javers'
+                    }
+                }
+            }
+        }
+
+        repositories {
+            maven {
+                //url = layout.buildDirectory.dir('staging-deploy')
+                url = rootProject.layout.buildDirectory.dir('staging-deploy')
+            }
+        }
     }
+
+    /*
     publishing {
         publications {
             mavenJava(MavenPublication) {
@@ -124,12 +165,7 @@ subprojects {
                 }
             }
         }
-    }
-
-    signing {
-        sign publishing.publications
-    }
-    //-- eof maven-publish.publish spell --
+    }*/
 
     test {
         useJUnitPlatform()
@@ -141,22 +177,37 @@ subprojects {
     }
 }
 
-nexusPublishing {
-    packageGroup = 'org.javers'
-
-    repositories {
-        sonatype {
-            username = project.findProperty('nexusUsername') ?: 'secured'
-            password = project.findProperty('nexusPassword') ?: 'secured'
+jreleaser {
+    project {
+        name = 'JaVers Library'
+        description = 'JaVers - object auditing and diff framework for Java'
+        website = 'https://javers.org'
+        authors = ['Bartosz Walacik']
+        license = 'Apache-2.0'
+        java {
+            groupId = 'org.javers'
+            version = scmVersion.version
         }
     }
-    // noinspection GroovyAssignabilityCheck
-    transitionCheckOptions {
-        maxRetries.set(50)
-        delayBetween.set(Duration.ofSeconds(5))
+    signing {
+        active = 'ALWAYS'
+        armored = true
+    }
+    deploy {
+        maven {
+            mavenCentral {
+                sonatype {
+                    active = 'ALWAYS'
+                    url = 'https://central.sonatype.com/api/v1/publisher'
+                    namespace = 'org.javers'
+                    stagingRepository('build/staging-deploy')
+                }
+            }
+        }
     }
 }
 
 wrapper() {
     gradleVersion = '8.7'
 }
+
